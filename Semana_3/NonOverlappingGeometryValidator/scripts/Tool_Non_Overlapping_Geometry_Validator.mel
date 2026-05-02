@@ -1,0 +1,84 @@
+/* 
+    Detector de Superposición de Geometría (AABB)
+    Autor: Gemini (Technical Artist Assistant)
+    Descripción: Analiza todos los objetos poligonales de la escena y verifica 
+    si sus cajas delimitadoras (Bounding Boxes) se intersectan.
+*/
+
+global proc checkGeometryOverlap() {
+    // 1. Obtener todos los nodos de tipo "mesh" (geometría poligonal)
+    string $meshes[] = `ls -type "mesh"`;
+    string $transforms[];
+    
+    // 2. Obtener los "transforms" (padres) de esas geometrías para evaluarlos a nivel de objeto
+    for ($mesh in $meshes) {
+        // Ignorar nodos intermedios (historial)
+        if (`getAttr ($mesh + ".intermediateObject")` == 0) {
+            string $parent[] = `listRelatives -parent $mesh`;
+            if (size($parent) > 0) {
+                $transforms[size($transforms)] = $parent[0];
+            }
+        }
+    }
+    
+    // Eliminar duplicados por si acaso
+    $transforms = `stringArrayRemoveDuplicates $transforms`;
+    string $overlappingObjects[];
+
+    // 3. Comparar las cajas delimitadoras (Bounding Boxes) de todos los objetos
+    int $numTransforms = size($transforms);
+    for ($i = 0; $i < $numTransforms; $i++) {
+        // Bounding Box del Objeto A en World Space [minX, minY, minZ, maxX, maxY, maxZ]
+        float $bb1[] = `xform -q -ws -bb $transforms[$i]`;
+        
+        for ($j = $i + 1; $j < $numTransforms; $j++) {
+            // Bounding Box del Objeto B
+            float $bb2[] = `xform -q -ws -bb $transforms[$j]`;
+
+            // Algoritmo de intersección AABB 3D
+            if ($bb1[0] <= $bb2[3] && $bb1[3] >= $bb2[0] &&
+                $bb1[1] <= $bb2[4] && $bb1[4] >= $bb2[1] &&
+                $bb1[2] <= $bb2[5] && $bb1[5] >= $bb2[2]) {
+                
+                // Si hay intersección, añadimos ambos objetos a la lista de errores
+                $overlappingObjects[size($overlappingObjects)] = $transforms[$i];
+                $overlappingObjects[size($overlappingObjects)] = $transforms[$j];
+            }
+        }
+    }
+    
+    // Limpiar la lista de objetos superpuestos para no repetir nombres
+    $overlappingObjects = `stringArrayRemoveDuplicates $overlappingObjects`;
+
+    // 4. Crear la Interfaz de Usuario (Ventana)
+    if (`window -exists overlapCheckWin`) {
+        deleteUI overlapCheckWin;
+    }
+    
+    window -title "Detector de Superposición" -widthHeight 350 300 overlapCheckWin;
+    columnLayout -adjustableColumn true -rowSpacing 15 -columnAttach "both" 15;
+    
+    separator -height 10 -style "none";
+
+    if (size($overlappingObjects) > 0) {
+        // Mensaje de ERROR
+        text -label "¡ERROR! Se ha detectado superposición." -align "center" -font "boldLabelFont" -backgroundColor 0.8 0.2 0.2;
+        text -label "Los siguientes objetos están colisionando:" -align "center";
+        
+        // Mostrar la lista de objetos en un campo con scroll
+        string $listStr = `stringArrayToString $overlappingObjects "\n"`;
+        scrollField -text $listStr -editable false -height 150 -wordWrap false -font "plainLabelFont";
+    } else {
+        // Mensaje de ÉXITO
+        text -label "¡ÉXITO! No hay geometría superpuesta." -align "center" -font "boldLabelFont" -backgroundColor 0.2 0.8 0.2;
+        text -label "La escena está limpia y lista." -align "center";
+    }
+    
+    separator -height 10 -style "none";
+    button -label "Cerrar" -command "deleteUI overlapCheckWin" -height 30;
+
+    showWindow overlapCheckWin;
+}
+
+// Ejecutar la función principal
+checkGeometryOverlap();
